@@ -1,113 +1,168 @@
-import Image from 'next/image'
+"use client";
+
+import axios from "axios";
+import { useState } from "react";
+import { set, useForm } from "react-hook-form";
+import { z } from "zod";
+import {
+  Button,
+  CustomFlowbiteTheme,
+  Label,
+  Select,
+  Textarea,
+} from "flowbite-react";
+import { AiOutlineLoading } from "react-icons/ai";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+const ListWebSiteFormSchema = z.object({
+  sites: z.string()
+    .transform((value) => {
+      if (value.trim() === '') {
+        return [];
+      }
+      return value.split("\n").map((site) => site.trim());
+    })
+    .refine((sites) => sites.length > 0, {
+      message: "You must add at least one URL",
+    })
+    .refine((sites) => sites.length <= 5, {
+      message: "You can add up to 5 URLs",
+    }),
+  device: z.enum(["mobile", "desktop"]),
+});
+
+type ListInputWebSiteFormData = z.input<typeof ListWebSiteFormSchema>;
+type ListOutputWebSiteFormData = z.output<typeof ListWebSiteFormSchema>;
+
+interface scoreResponse {
+  score: number;
+}
+
+const customTheme: CustomFlowbiteTheme["button"] = {
+  color: {
+    primary: "bg-red-500 hover:bg-red-600",
+  },
+  disabled: "cursor-not-allowed opacity-50 bg-red-600",
+  spinnerLeftPosition: {
+    md: "relative",
+  },
+  inner: {
+    base: "flex justify-center items-center w-full gap-2",
+  },
+};
 
 export default function Home() {
+  const {
+    register,
+    handleSubmit,
+    setError,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<ListInputWebSiteFormData, any, ListOutputWebSiteFormData>({
+    resolver: zodResolver(ListWebSiteFormSchema),
+  });
+
+  const [average, setAverage] = useState(0);
+
+  async function handleListWebSite({ sites, device }: ListOutputWebSiteFormData) {
+
+    try {
+
+      const scores: scoreResponse[] = await Promise.all(
+        sites.map(async (site) => {
+          console.log("testing: " + site);
+          const { data } = await axios.get("/api/get-results", {
+            params: { site, device },
+          });
+          return data;
+        })
+      );
+
+      const avg =
+        scores.reduce((acc, score) => acc + score.score, 0) / scores.length;
+
+      console.log("average: " + avg);
+
+      setAverage(avg);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        // Handle validation errors
+        setError("sites", {
+          message: error.errors[0].message, // Show the first validation error message
+        });
+      } else {
+        // Handle other errors
+        setError("sites", {
+          message: "Something went wrong, verify your URLs or try again later",
+        });
+      }
+    }
+  }
+
+  const device = watch("device");
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+    <main className="flex min-h-screen flex-col items-center gap-4 p-24 max-w-3xl m-auto text-center">
+      <h1 className="text-4xl font-bold">
+        {isSubmitting ? "Testing, please wait" : "Atomic Average Score Tester"}
+      </h1>
+      <p className="text-red-500">
+        Test up of 5 pages in parallel using the Google Lighthouse API and get
+        the average result of tested pages
+      </p>
+      {average > 0 && (
+        <div className="text-2xl font-bold">
+          Average score: {`${average.toFixed(2)} of 100 for ${device}`}
         </div>
-      </div>
+      )}
+      <form
+        className="flex w-full max-w-md flex-col gap-4"
+        onSubmit={handleSubmit(handleListWebSite)}
+      >
+        <div className="max-w-md">
+          <div className="mb-2 block">
+            <Label
+              className="text-white"
+              htmlFor="sites"
+              value="Add your URLs, one per line"
+            />
+          </div>
+          <Textarea {...register("sites")} placeholder="https://..." rows={5} />
+          {errors.sites && (
+            <div className="text-red-500 text-sm mt-1">
+              {errors.sites.message}
+            </div>
+          )}
+        </div>
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+        <div className="max-w-md">
+          <div className="mb-2 block">
+            <Label
+              className="text-white"
+              htmlFor="device"
+              value="Select the device"
+            />
+          </div>
+          <Select {...register("device")}>
+            <option value="mobile">Mobile</option>
+            <option value="desktop">Desktop</option>
+          </Select>
+        </div>
 
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
+        <Button
+          theme={customTheme}
+          disabled={isSubmitting}
+          color="primary"
+          size="md"
+          type="submit"
+          isProcessing={isSubmitting}
+          processingSpinner={
+            <AiOutlineLoading className="h-6 w-6 animate-spin" />
+          }
         >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
+          {!isSubmitting ? "Get Average Score" : "Waiting Google API"}
+        </Button>
+      </form>
     </main>
-  )
+  );
 }
